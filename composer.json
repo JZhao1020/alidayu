@@ -1,0 +1,23 @@
+{
+    "name": "hao/Aliyun",
+    "homepage": "https://github.com/JZhao1020/Aliyun",
+    "description": "阿里大鱼短信平台",
+    "type": "library",
+    "authors": [
+        {
+            "name": "hao",
+            "email": "18816784184@163.com"
+        }
+    ],
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Aliyun\\": "src"
+        }
+    },
+    "require": {
+        "php": ">=5.3.3",
+        "ext-curl": "*",
+        "ext-openssl": "*"
+    }
+}
