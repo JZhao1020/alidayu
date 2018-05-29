@@ -28,8 +28,11 @@ class Send{
      * @param string $config['sign_name'] 签名名称
      * @param string $config['code'] 模板CODE
      */
-    public function _initialize(array $config){
+    public function __construct($config = array()){
         self::$dasms = $config;
+
+        // 加载区域结点配置
+        core_config::load();
     }
 
     /**
@@ -65,13 +68,13 @@ class Send{
 
     /**
      * 发送短信
-     * @param string $phone 手机号
-     * @param array $data 短信发送数据
+     * @param string $phone 必填，手机号
+     * @param array $data 必填，短信发送数据
+     * @param string $signName 可空，签名名称
+     * @param string $code 可空，模板code
      * @return true|object
      */
-    public function sendSms($phone,$data){
-        // 加载区域结点配置
-        core_config::load();
+    public function sendSms($phone,$data,$signName = null,$code = null){
         // 初始化SendSmsRequest实例用于设置发送短信的参数
         $request = new SendSmsRequest();
 
@@ -82,10 +85,16 @@ class Send{
         $request->setPhoneNumbers($phone);
 
         // 必填，设置签名名称，应严格按"签名名称"填写，请参考: https://dysms.console.aliyun.com/dysms.htm#/develop/sign
-        $request->setSignName(self::$dasms['sign_name']);
+        if(!isset($signName)){
+            $signName = self::$dasms['sign_name'];
+        }
+        $request->setSignName($signName);
 
         // 必填，设置模板CODE，应严格按"模板CODE"填写, 请参考: https://dysms.console.aliyun.com/dysms.htm#/develop/template
-        $request->setTemplateCode(self::$dasms['code']);
+        if(!isset($code)){
+            $code = self::$dasms['code'];
+        }
+        $request->setTemplateCode($code);
 
         // 可选，设置模板参数, 假如模板中存在变量需要替换则为必填项
         $request->setTemplateParam(json_encode($data, JSON_UNESCAPED_UNICODE));
@@ -113,23 +122,30 @@ class Send{
      * @param string $bizId 选填，短信发送流水号 (e.g. abc123)
      * @return stdClass
      */
-    public function queryDetails($phoneNumbers, $sendDate, $pageSize = 10, $currentPage = 1, $bizId=null) {
+    public static function queryDetails($phoneNumbers, $sendDate, $pageSize = 10, $currentPage = 1, $bizId = null) {
         // 初始化QuerySendDetailsRequest实例用于设置短信查询的参数
         $request = new QuerySendDetailsRequest();
         // 必填，短信接收号码
         $request->setPhoneNumber($phoneNumbers);
+
         // 选填，短信发送流水号
-        $request->setBizId($bizId);
+        if(isset($bizId)) {
+            $request->setBizId($bizId);
+        }
+
         // 必填，短信发送日期，支持近30天记录查询，格式Ymd
         $request->setSendDate($sendDate);
+
         // 必填，分页大小
         $request->setPageSize($pageSize);
+
         // 必填，当前页码
         $request->setCurrentPage($currentPage);
+
         // 发起访问请求
         $acsResponse = static::getAcsClient()->getAcsResponse($request);
         // 打印请求结果
-        return $acsResponse;
+        return self::object2array($acsResponse);
     }
 
     /**
@@ -140,16 +156,28 @@ class Send{
      * @param string $code 模板CODE
      * @return stdClass
      */
-    public static function sendBatchSms(array $phoneNumbers,array $templateParam,$signName = array(),$code = null) {
+    public function sendBatchSms(array $phoneNumbers,array $templateParam,$signName = array(),$code = null) {
         // 初始化SendSmsRequest实例用于设置发送短信的参数
         $request = new SendBatchSmsRequest();
 
         // 必填:待发送手机号。支持JSON格式的批量调用，批量上限为100个手机号码,批量调用相对于单条调用及时性稍有延迟,验证码类型的短信推荐使用单条调用的方式
         $request->setPhoneNumberJson(json_encode($phoneNumbers, JSON_UNESCAPED_UNICODE));
 
-        if(!isset($signName)) {
+        $count = count($phoneNumbers);
+        $count_sign = count($signName);
+        if(is_array($signName) && $count_sign == 0) {
             $signName = array(self::$dasms['sign_name']);
         }
+
+        if($count != $count_sign){
+            $sign_array = array();
+            for ($i = 0;$i < $count;$i++){
+                $sign_array[$i] = $signName[0];
+            }
+            $signName = $sign_array;
+        }
+
+
         // 必填:短信签名-支持不同的号码发送不同的短信签名
         $request->setSignNameJson(json_encode($signName, JSON_UNESCAPED_UNICODE));
 
@@ -161,10 +189,41 @@ class Send{
         $request->setTemplateCode($code);
         // 必填:模板中的变量替换JSON串,如模板内容为"亲爱的${name},您的验证码为${code}"时,此处的值为
         // 友情提示:如果JSON中需要带换行符,请参照标准的JSON协议对换行符的要求,比如短信内容中包含\r\n的情况在JSON中需要表示成\\r\\n,否则会导致JSON在服务端解析失败
+
+
+        if(is_array($templateParam)){
+            $param = false;
+            foreach ($templateParam as $key => $val){
+                if(is_array($val)){
+                    $param = true;
+                    break;
+                }
+            }
+
+            if($param === false){
+                $param_array = array();
+                for ($i = 0;$i < $count;$i++){
+                    $param_array[$i] = $templateParam;
+                }
+                $templateParam = $param_array;
+            }
+        }
+
         $request->setTemplateParamJson(json_encode($templateParam, JSON_UNESCAPED_UNICODE));
         // 发起访问请求
         $acsResponse = static::getAcsClient()->getAcsResponse($request);
-        return $acsResponse;
+        return self::object2array($acsResponse);
     }
 
+    private static function object2array($object) {
+        if (is_object($object)) {
+            foreach ($object as $key => $value) {
+                $array[$key] = $value;
+            }
+        }
+        else {
+            $array = $object;
+        }
+        return $array;
+    }
 }
